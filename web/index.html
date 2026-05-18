@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArkTS 代码知识图谱 - 可视化分析平台</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a24;
+            --accent-primary: #00d4aa;
+            --accent-secondary: #6366f1;
+            --accent-tertiary: #f472b6;
+            --text-primary: #e4e4e7;
+            --text-secondary: #a1a1aa;
+            --text-muted: #71717a;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --glow-accent: rgba(0, 212, 170, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .app-container {
+            display: grid;
+            grid-template-columns: 320px 1fr 400px;
+            grid-template-rows: 70px 1fr;
+            height: 100vh;
+            gap: 1px;
+            background: var(--border-color);
+        }
+
+        header {
+            grid-column: 1 / -1;
+            background: var(--bg-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        .logo h1 {
+            font-size: 18px;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-stats {
+            display: flex;
+            gap: 32px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 20px;
+            font-weight: 500;
+            color: var(--accent-primary);
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .sidebar {
+            background: var(--bg-secondary);
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .sidebar-section {
+            margin-bottom: 24px;
+        }
+
+        .section-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+        }
+
+        .search-box {
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 16px 12px 40px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px var(--glow-accent);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+        }
+
+        .entity-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .entity-item {
+            padding: 10px 14px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+
+        .entity-item:hover {
+            border-color: var(--accent-primary);
+            transform: translateX(4px);
+        }
+
+        .entity-item.active {
+            border-color: var(--accent-primary);
+            background: rgba(0, 212, 170, 0.1);
+        }
+
+        .entity-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .entity-meta {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .graph-container {
+            background: var(--bg-primary);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .graph-container svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .node {
+            cursor: pointer;
+        }
+
+        .node-circle {
+            transition: all 0.3s ease;
+        }
+
+        .node-circle.class {
+            fill: var(--accent-primary);
+            stroke: rgba(0, 212, 170, 0.5);
+            stroke-width: 2;
+        }
+
+        .node-circle.method {
+            fill: var(--accent-secondary);
+            stroke: rgba(99, 102, 241, 0.5);
+            stroke-width: 2;
+        }
+
+        .node-circle.namespace {
+            fill: var(--accent-tertiary);
+            stroke: rgba(244, 114, 182, 0.5);
+            stroke-width: 2;
+        }
+
+        .node:hover .node-circle {
+            filter: brightness(1.3);
+        }
+
+        .node-label {
+            font-size: 10px;
+            fill: var(--text-secondary);
+            pointer-events: none;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .link {
+            stroke: var(--border-color);
+            stroke-opacity: 0.6;
+            fill: none;
+        }
+
+        .link.call {
+            stroke: var(--accent-primary);
+            stroke-opacity: 0.4;
+            stroke-dasharray: 4, 2;
+        }
+
+        .detail-panel {
+            background: var(--bg-secondary);
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .detail-header {
+            margin-bottom: 24px;
+        }
+
+        .detail-type {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--accent-primary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .detail-name {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .detail-signature {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--text-muted);
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            overflow-x: auto;
+        }
+
+        .detail-section {
+            margin-bottom: 24px;
+        }
+
+        .detail-section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .detail-section-title::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border-color);
+        }
+
+        .method-list, .call-list, .relation-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .method-item, .call-item {
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+
+        .method-item:hover, .call-item:hover {
+            border-color: var(--accent-secondary);
+        }
+
+        .method-name, .call-name {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .method-params, .call-target {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .relation-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .relation-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-primary);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 24px;
+            left: 24px;
+            display: flex;
+            gap: 8px;
+            z-index: 10;
+        }
+
+        .control-btn {
+            width: 40px;
+            height: 40px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .control-btn:hover {
+            background: var(--bg-tertiary);
+            color: var(--accent-primary);
+            border-color: var(--accent-primary);
+        }
+
+        .legend {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            background: var(--bg-secondary);
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            z-index: 10;
+        }
+
+        .legend-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .legend-dot.class { background: var(--accent-primary); }
+        .legend-dot.method { background: var(--accent-secondary); }
+        .legend-dot.namespace { background: var(--accent-tertiary); }
+
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(10, 10, 15, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 16px;
+            z-index: 1000;
+        }
+
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .tooltip {
+            position: absolute;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+        }
+
+        .tooltip-title {
+            font-weight: 600;
+            color: var(--accent-primary);
+            margin-bottom: 4px;
+        }
+
+        @keyframes nodeAppear {
+            from {
+                opacity: 0;
+                transform: scale(0);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .node {
+            animation: nodeAppear 0.5s ease-out backwards;
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-overlay" id="loading">
+        <div class="loading-spinner"></div>
+        <div id="loadingText">正在加载数据...</div>
+    </div>
+
+    <div class="app-container">
+        <header>
+            <div class="logo">
+                <div class="logo-icon">◇</div>
+                <h1>ArkTS 代码知识图谱</h1>
+            </div>
+            <div class="header-stats" id="headerStats">
+                <div class="stat-item">
+                    <div class="stat-value" id="statFiles">0</div>
+                    <div class="stat-label">文件</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="statClasses">0</div>
+                    <div class="stat-label">类</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="statMethods">0</div>
+                    <div class="stat-label">方法</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="statCalls">0</div>
+                    <div class="stat-label">调用</div>
+                </div>
+            </div>
+        </header>
+
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <div class="section-title">搜索</div>
+                <div class="search-box">
+                    <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <input type="text" class="search-input" id="searchInput" placeholder="搜索类、方法...">
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="section-title">类 / 结构体</div>
+                <div class="entity-list" id="classList"></div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="section-title">独立方法</div>
+                <div class="entity-list" id="methodList"></div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="section-title">命名空间</div>
+                <div class="entity-list" id="namespaceList"></div>
+            </div>
+        </aside>
+
+        <main class="graph-container">
+            <svg id="graphSvg"></svg>
+            <div class="legend">
+                <div class="legend-title">图例</div>
+                <div class="legend-item"><div class="legend-dot class"></div>类 / 结构体</div>
+                <div class="legend-item"><div class="legend-dot method"></div>方法</div>
+                <div class="legend-item"><div class="legend-dot.namespace"></div>命名空间</div>
+            </div>
+            <div class="controls">
+                <button class="control-btn" onclick="zoomIn()" title="放大">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35M11 8v6M8 11h6"/>
+                    </svg>
+                </button>
+                <button class="control-btn" onclick="zoomOut()" title="缩小">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35M8 11h6"/>
+                    </svg>
+                </button>
+                <button class="control-btn" onclick="resetZoom()" title="重置视图">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                        <path d="M3 3v5h5"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="tooltip" id="tooltip" style="display: none;"></div>
+        </main>
+
+        <aside class="detail-panel" id="detailPanel">
+            <div class="empty-state">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                    <line x1="12" y1="22.08" x2="12" y2="12"/>
+                </svg>
+                <p>点击图谱中的节点或侧边栏项目查看详情</p>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        let graphData = { nodes: [], links: [] };
+        let simulation, svg, g;
+        let currentZoom;
+        let tooltip;
+
+        async function loadData() {
+            try {
+                document.getElementById('loadingText').textContent = '正在加载数据...';
+                const response = await fetch('/api/graph');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                graphData = await response.json();
+                
+                console.log('Loaded graph data:', {
+                    nodes: graphData.nodes.length,
+                    links: graphData.links.length,
+                    stats: graphData.stats
+                });
+
+                if (graphData.nodes.length === 0) {
+                    document.getElementById('loadingText').textContent = '没有找到数据，请先运行分析';
+                    return;
+                }
+
+                updateStats(graphData.stats);
+                buildGraph();
+                buildSidebar();
+                document.getElementById('loading').style.display = 'none';
+                
+            } catch (error) {
+                console.error('Failed to load graph data:', error);
+                document.getElementById('loadingText').textContent = `加载失败: ${error.message}`;
+            }
+        }
+
+        function updateStats(stats) {
+            if (!stats) return;
+            document.getElementById('statFiles').textContent = stats.files || 0;
+            document.getElementById('statClasses').textContent = stats.classes || 0;
+            document.getElementById('statMethods').textContent = stats.methods || 0;
+            document.getElementById('statCalls').textContent = stats.calls || 0;
+        }
+
+        function buildSidebar() {
+            const classList = document.getElementById('classList');
+            const methodList = document.getElementById('methodList');
+            const namespaceList = document.getElementById('namespaceList');
+            
+            const classes = graphData.nodes.filter(n => n.type === 'class');
+            const methods = graphData.nodes.filter(n => n.type === 'method' && !n.class_id);
+            const namespaces = graphData.nodes.filter(n => n.type === 'namespace');
+
+            classList.innerHTML = classes.slice(0, 100).map(c => `
+                <div class="entity-item" data-id="${c.id}" onclick="selectNode('${c.id}')">
+                    <div class="entity-name">${escapeHtml(c.name)}</div>
+                    <div class="entity-meta">${c.file ? escapeHtml(c.file.split('/').pop()) : '未知文件'}</div>
+                </div>
+            `).join('');
+
+            methodList.innerHTML = methods.slice(0, 50).map(m => `
+                <div class="entity-item" data-id="${m.id}" onclick="selectNode('${m.id}')">
+                    <div class="entity-name">${escapeHtml(m.name)}</div>
+                    <div class="entity-meta">${m.params ? escapeHtml(m.params) : '()'}</div>
+                </div>
+            `).join('');
+
+            namespaceList.innerHTML = namespaces.slice(0, 20).map(n => `
+                <div class="entity-item" data-id="${n.id}" onclick="selectNode('${n.id}')">
+                    <div class="entity-name">${escapeHtml(n.name)}</div>
+                    <div class="entity-meta">命名空间</div>
+                </div>
+            `).join('');
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function buildGraph() {
+            svg = d3.select('#graphSvg');
+            const width = svg.node().clientWidth;
+            const height = svg.node().clientHeight;
+
+            svg.selectAll('*').remove();
+
+            const defs = svg.append('defs');
+            
+            const gradient = defs.append('radialGradient')
+                .attr('id', 'glow')
+                .attr('cx', '50%')
+                .attr('cy', '50%')
+                .attr('r', '50%');
+            gradient.append('stop')
+                .attr('offset', '0%')
+                .attr('stop-color', 'rgba(0, 212, 170, 0.3)');
+            gradient.append('stop')
+                .attr('offset', '100%')
+                .attr('stop-color', 'rgba(0, 212, 170, 0)');
+
+            currentZoom = d3.zoom()
+                .scaleExtent([0.1, 4])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
+
+            svg.call(currentZoom);
+
+            g = svg.append('g');
+
+            const link = g.append('g')
+                .attr('class', 'links')
+                .selectAll('line')
+                .data(graphData.links)
+                .enter()
+                .append('line')
+                .attr('class', d => `link ${d.type || ''}`)
+                .attr('stroke-width', d => d.type === 'call' ? 1.5 : 1);
+
+            const node = g.append('g')
+                .attr('class', 'nodes')
+                .selectAll('g')
+                .data(graphData.nodes)
+                .enter()
+                .append('g')
+                .attr('class', 'node')
+                .attr('data-id', d => d.id)
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended))
+                .on('click', (event, d) => selectNode(d.id))
+                .on('mouseover', showTooltip)
+                .on('mousemove', moveTooltip)
+                .on('mouseout', hideTooltip);
+
+            node.append('circle')
+                .attr('class', d => `node-circle ${d.type}`)
+                .attr('r', d => {
+                    if (d.type === 'class') return 22;
+                    if (d.type === 'namespace') return 28;
+                    return 14;
+                });
+
+            node.append('text')
+                .attr('class', 'node-label')
+                .attr('dy', d => {
+                    if (d.type === 'class') return 38;
+                    if (d.type === 'namespace') return 43;
+                    return 26;
+                })
+                .attr('text-anchor', 'middle')
+                .text(d => {
+                    const name = d.name || 'Unknown';
+                    return name.length > 12 ? name.substring(0, 10) + '...' : name;
+                });
+
+            node.style('animation-delay', (d, i) => `${i * 0.015}s`);
+
+            simulation = d3.forceSimulation(graphData.nodes)
+                .force('link', d3.forceLink(graphData.links)
+                    .id(d => d.id)
+                    .distance(d => {
+                        if (d.type === 'call') return 120;
+                        return 100;
+                    }))
+                .force('charge', d3.forceManyBody().strength(d => {
+                    if (d.type === 'class') return -400;
+                    if (d.type === 'namespace') return -600;
+                    return -200;
+                }))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(d => {
+                    if (d.type === 'class') return 40;
+                    if (d.type === 'namespace') return 50;
+                    return 25;
+                }))
+                .on('tick', () => {
+                    link
+                        .attr('x1', d => d.source.x)
+                        .attr('y1', d => d.source.y)
+                        .attr('x2', d => d.target.x)
+                        .attr('y2', d => d.target.y);
+
+                    node.attr('transform', d => `translate(${d.x},${d.y})`);
+                });
+        }
+
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+
+        function selectNode(nodeId) {
+            const node = graphData.nodes.find(n => n.id === nodeId);
+            if (!node) return;
+
+            document.querySelectorAll('.entity-item').forEach(el => {
+                el.classList.remove('active');
+                if (el.dataset.id === nodeId) {
+                    el.classList.add('active');
+                }
+            });
+            
+            g.selectAll('.node').style('opacity', 0.3);
+
+            const connectedNodes = new Set([nodeId]);
+            graphData.links.forEach(l => {
+                const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
+                const targetId = typeof l.target === 'object' ? l.target.id : l.target;
+                if (sourceId === nodeId) connectedNodes.add(targetId);
+                if (targetId === nodeId) connectedNodes.add(sourceId);
+            });
+
+            g.selectAll('.node')
+                .filter(d => connectedNodes.has(d.id))
+                .style('opacity', 1);
+
+            g.selectAll('.link')
+                .style('opacity', d => {
+                    const sourceId = typeof d.source === 'object' ? d.source.id : d.source;
+                    const targetId = typeof d.target === 'object' ? d.target.id : d.target;
+                    return sourceId === nodeId || targetId === nodeId ? 1 : 0.1;
+                });
+
+            showDetail(node);
+        }
+
+        function showTooltip(event, d) {
+            tooltip = document.getElementById('tooltip');
+            let content = `<div class="tooltip-title">${escapeHtml(d.name)}</div>`;
+            content += `<div>类型: ${getTypeLabel(d.type)}</div>`;
+            if (d.file) {
+                content += `<div>文件: ${escapeHtml(d.file.split('/').pop())}</div>`;
+            }
+            if (d.start_line) {
+                content += `<div>行: ${d.start_line}${d.end_line ? '-' + d.end_line : ''}</div>`;
+            }
+            tooltip.innerHTML = content;
+            tooltip.style.display = 'block';
+        }
+
+        function moveTooltip(event) {
+            if (!tooltip) return;
+            tooltip.style.left = (event.pageX + 15) + 'px';
+            tooltip.style.top = (event.pageY + 15) + 'px';
+        }
+
+        function hideTooltip() {
+            if (tooltip) {
+                tooltip.style.display = 'none';
+            }
+        }
+
+        function showDetail(node) {
+            const panel = document.getElementById('detailPanel');
+            
+            let html = `
+                <div class="detail-header">
+                    <div class="detail-type">${getTypeLabel(node.type)}</div>
+                    <div class="detail-name">${escapeHtml(node.name)}</div>
+                    ${node.signature ? `<div class="detail-signature">${escapeHtml(node.signature)}</div>` : ''}
+                </div>
+            `;
+
+            html += `
+                <div class="detail-section">
+                    <div class="detail-section-title">基本信息</div>
+                    <div class="relation-list">
+                        ${node.file ? `
+                            <div class="relation-item">
+                                <div class="relation-dot"></div>
+                                <div>
+                                    <div style="font-weight: 500;">文件</div>
+                                    <div style="font-family: JetBrains Mono; font-size: 11px; color: var(--text-muted);">
+                                        ${escapeHtml(node.file)}
+                                    </div>
+                                </div>
+                            </div>
+                        ` : ''}
+                        ${node.start_line ? `
+                            <div class="relation-item">
+                                <div class="relation-dot"></div>
+                                <div>
+                                    <div style="font-weight: 500;">位置</div>
+                                    <div style="font-family: JetBrains Mono; font-size: 11px; color: var(--text-muted);">
+                                        第 ${node.start_line} 行${node.end_line ? ' - ' + node.end_line + ' 行' : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+
+            if (node.type === 'class') {
+                const methods = graphData.nodes.filter(n => 
+                    n.type === 'method' && 
+                    graphData.links.some(l => {
+                        const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
+                        const targetId = typeof l.target === 'object' ? l.target.id : l.target;
+                        return sourceId === n.id && targetId === node.id;
+                    })
+                );
+
+                const callers = graphData.links
+                    .filter(l => {
+                        const targetId = typeof l.target === 'object' ? l.target.id : l.target;
+                        const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
+                        const isCallToMethod = l.type === 'call' && targetId === node.id;
+                        const isMethodCall = l.type === 'call' && methods.some(m => m.id === targetId);
+                        return isCallToMethod || isMethodCall;
+                    })
+                    .map(l => {
+                        const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
+                        return graphData.nodes.find(n => n.id === sourceId);
+                    })
+                    .filter(Boolean);
+
+                if (methods.length > 0) {
+                    html += `
+                        <div class="detail-section">
+                            <div class="detail-section-title">方法 (${methods.length})</div>
+                            <div class="method-list">
+                                ${methods.slice(0, 20).map(m => `
+                                    <div class="method-item" onclick="selectNode('${m.id}')">
+                                        <div class="method-name">${escapeHtml(m.name)}</div>
+                                        <div class="method-params">${m.params ? escapeHtml(m.params) : '()'}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (callers.length > 0) {
+                    html += `
+                        <div class="detail-section">
+                            <div class="detail-section-title">被调用 (${callers.length})</div>
+                            <div class="call-list">
+                                ${callers.slice(0, 10).map(c => `
+                                    <div class="call-item" onclick="selectNode('${c.id}')">
+                                        <div class="call-name">${escapeHtml(c.name)}</div>
+                                        <div class="call-target">${c.type === 'class' ? escapeHtml(c.name) : '方法'}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            if (node.type === 'method') {
+                const callers = graphData.links
+                    .filter(l => {
+                        const targetId = typeof l.target === 'object' ? l.target.id : l.target;
+                        return l.type === 'call' && targetId === node.id;
+                    })
+                    .map(l => {
+                        const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
+                        return graphData.nodes.find(n => n.id === sourceId);
+                    })
+                    .filter(Boolean);
+
+                const callees = graphData.links
+                    .filter(l => {
+                        const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
+                        return l.type === 'call' && sourceId === node.id;
+                    })
+                    .map(l => {
+                        const targetId = typeof l.target === 'object' ? l.target.id : l.target;
+                        return {
+                            node: graphData.nodes.find(n => n.id === targetId),
+                            calleeName: l.callee_name
+                        };
+                    });
+
+                if (callers.length > 0) {
+                    html += `
+                        <div class="detail-section">
+                            <div class="detail-section-title">调用者 (${callers.length})</div>
+                            <div class="call-list">
+                                ${callers.slice(0, 15).map(c => `
+                                    <div class="call-item" onclick="selectNode('${c.id}')">
+                                        <div class="call-name">${escapeHtml(c.name)}</div>
+                                        <div class="call-target">${c.type === 'method' ? '方法' : escapeHtml(c.type || '未知')}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (callees.length > 0) {
+                    html += `
+                        <div class="detail-section">
+                            <div class="detail-section-title">调用的方法 (${callees.length})</div>
+                            <div class="call-list">
+                                ${callees.slice(0, 15).map(c => `
+                                    <div class="call-item" ${c.node ? `onclick="selectNode('${c.node.id}')"` : ''}>
+                                        <div class="call-name">${escapeHtml(c.node ? c.node.name : c.calleeName)}</div>
+                                        <div class="call-target">${c.node ? escapeHtml(getTypeLabel(c.node.type)) : '外部方法'}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            panel.innerHTML = html;
+        }
+
+        function getTypeLabel(type) {
+            const labels = {
+                'class': '类 / 结构体',
+                'method': '方法',
+                'namespace': '命名空间'
+            };
+            return labels[type] || type || '未知';
+        }
+
+        function zoomIn() {
+            svg.transition().duration(300).call(currentZoom.scaleBy, 1.3);
+        }
+
+        function zoomOut() {
+            svg.transition().duration(300).call(currentZoom.scaleBy, 0.7);
+        }
+
+        function resetZoom() {
+            svg.transition().duration(500).call(currentZoom.transform, d3.zoomIdentity);
+        }
+
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+            if (!query) {
+                g.selectAll('.node').style('opacity', 1);
+                g.selectAll('.link').style('opacity', 0.6);
+                return;
+            }
+
+            const matches = graphData.nodes.filter(n => 
+                n.name && n.name.toLowerCase().includes(query)
+            );
+            const matchIds = new Set(matches.map(m => m.id));
+
+            g.selectAll('.node')
+                .style('opacity', d => matchIds.has(d.id) ? 1 : 0.2);
+
+            g.selectAll('.link')
+                .style('opacity', d => {
+                    const sourceId = typeof d.source === 'object' ? d.source.id : d.source;
+                    const targetId = typeof d.target === 'object' ? d.target.id : d.target;
+                    return matchIds.has(sourceId) || matchIds.has(targetId) ? 0.6 : 0.1;
+                });
+        });
+
+        loadData();
+    </script>
+</body>
+</html>
