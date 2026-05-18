@@ -12,6 +12,11 @@ complex_project/src/main/ets/UltraComplexTest.ets
 complex_project/src/main/ets/EdgeCaseTest.ets
 complex_project/src/main/ets/LargeScaleTest.ets
 
+# Test scripts
+deep_stress_test.py
+inspect_analysis.py
+verify_system.py
+
 # Python
 __pycache__/
 *.py[cod]
