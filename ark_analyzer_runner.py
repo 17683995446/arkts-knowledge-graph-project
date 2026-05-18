@@ -143,11 +143,11 @@ class ArkAnalyzerRunner:
         
         # Insert methods and create relationships
         for method in entity.methods:
-            method_id = self._store_method(method, class_id, None, file_path)
+            method_id = self._store_method(method, class_id, None, file_id, file_path)
             self._store_method_calls(method, method_id)
 
     def _store_method(self, method: ParsedMethod, class_id: Optional[int], 
-                     namespace_id: Optional[int], file_path: str) -> int:
+                     namespace_id: Optional[int], file_id: int, file_path: str) -> int:
         """Store a parsed method in the database."""
         return self.db.insert_method(
             project_id=self.project_id,
@@ -155,6 +155,7 @@ class ArkAnalyzerRunner:
             signature=f"{method.name}({method.params})",
             class_id=class_id,
             namespace_id=namespace_id,
+            file_id=file_id,
             params=method.params,
             return_type=method.return_type,
             flags=0,
@@ -225,6 +226,7 @@ class ArkAnalyzerRunner:
             signature=f"function {func.name}({func.params})",
             class_id=None,
             namespace_id=None,
+            file_id=file_id,
             params=func.params,
             return_type=func.return_type,
             flags=0,

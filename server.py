@@ -76,35 +76,49 @@ def get_graph():
         
         # Add methods
         cursor = db.conn.execute("""
-            SELECT id, name, class_id, params, return_type, start_line, end_line
+            SELECT id, name, class_id, file_id, params, return_type, start_line, end_line
             FROM methods WHERE project_id = ?
         """, (project_id,))
         for row in cursor.fetchall():
             method_id = f"method_{row[0]}"
             class_id = row[2]
+            file_id = row[3]
             file_path = ""
             
-            if class_id and class_id in node_map:
-                class_info = node_map[class_id]
-                # Find the class's file
-                file_path = next((n.get('file', '') for n in nodes 
-                               if n['id'] == class_info['id']), '')
+            if file_id and file_id in node_map:
+                file_info = node_map[file_id]
+                file_path = file_info.get('file', '')
             
             nodes.append({
                 'id': method_id,
                 'name': row[1],
                 'type': 'method',
                 'class_id': class_id,
-                'params': row[3],
-                'return_type': row[4],
+                'file_id': file_id,
+                'params': row[4],
+                'return_type': row[5],
                 'file': file_path,
-                'start_line': row[5],
-                'end_line': row[6]
+                'start_line': row[6],
+                'end_line': row[7]
             })
             node_map[row[0]] = {'id': method_id, 'type': 'method', 'name': row[1]}
         
         # Build links array
         links = []
+        
+        # Add location relationships (method -> file)
+        cursor = db.conn.execute("""
+            SELECT id, file_id FROM methods 
+            WHERE project_id = ? AND file_id IS NOT NULL
+        """, (project_id,))
+        for row in cursor.fetchall():
+            method_id = f"method_{row[0]}"
+            file_id = f"file_{row[1]}"
+            links.append({
+                'source': method_id,
+                'target': file_id,
+                'type': 'location'
+            })
         
         # Add member relationships (method -> class)
         cursor = db.conn.execute("""

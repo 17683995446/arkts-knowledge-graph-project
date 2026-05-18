@@ -6,6 +6,12 @@
 # Embedded repositories
 arkanalyzer_repo/
 
+# Test data
+complex_project/src/main/ets/real_*/
+complex_project/src/main/ets/UltraComplexTest.ets
+complex_project/src/main/ets/EdgeCaseTest.ets
+complex_project/src/main/ets/LargeScaleTest.ets
+
 # Python
 __pycache__/
 *.py[cod]

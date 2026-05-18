@@ -79,6 +79,7 @@ class ArkAnalyzerDB:
                 signature TEXT,
                 class_id INTEGER,
                 namespace_id INTEGER,
+                file_id INTEGER,
                 params TEXT DEFAULT '',
                 return_type TEXT DEFAULT '',
                 flags INTEGER DEFAULT 0,
@@ -89,7 +90,8 @@ class ArkAnalyzerDB:
                 is_static INTEGER DEFAULT 0,
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
                 FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
-                FOREIGN KEY (namespace_id) REFERENCES namespaces(id) ON DELETE SET NULL
+                FOREIGN KEY (namespace_id) REFERENCES namespaces(id) ON DELETE SET NULL,
+                FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE SET NULL
             );
 
             CREATE TABLE IF NOT EXISTS fields (
@@ -216,18 +218,18 @@ class ArkAnalyzerDB:
         return cursor.lastrowid
 
     def insert_method(self, project_id: int, name: str, signature: str,
-                    class_id: int, namespace_id: int, params: str,
-                    return_type: str, flags: int, start_line: int,
+                    class_id: int, namespace_id: int, file_id: int,
+                    params: str, return_type: str, flags: int, start_line: int,
                     end_line: int, source_code: str, is_constructor: int,
                     is_static: int) -> int:
         """Insert a method and return its ID."""
         cursor = self.conn.execute(
             """INSERT INTO methods (project_id, name, signature, class_id, namespace_id,
-               params, return_type, flags, start_line, end_line, source_code,
+               file_id, params, return_type, flags, start_line, end_line, source_code,
                is_constructor, is_static)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (project_id, name, signature, class_id, namespace_id, params,
-             return_type, flags, start_line, end_line, source_code,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (project_id, name, signature, class_id, namespace_id, file_id,
+             params, return_type, flags, start_line, end_line, source_code,
              is_constructor, is_static)
         )
         return cursor.lastrowid
