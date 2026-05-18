@@ -167,23 +167,55 @@ class ArkAnalyzerRunner:
 
     def _store_method_calls(self, method: ParsedMethod, method_id: int):
         """Store all calls from a method."""
+        # Skip known library functions that shouldn't be tracked
+        SKIP_FUNCTIONS = {
+            'console', 'log', 'error', 'warn', 'info', 'debug',
+            'Text', 'Button', 'Column', 'Row', 'List', 
+            'ListItem', 'ForEach', 'if', 'else', 'switch', 'case',
+            'return', 'break', 'continue', 'push', 'pop', 'shift',
+            'unshift', 'slice', 'splice', 'find', 'findIndex',
+            'map', 'filter', 'reduce', 'forEach', 'some', 'every',
+            'includes', 'indexOf', 'join', 'split', 'toString',
+            'toUpperCase', 'toLowerCase', 'trim', 'substring',
+            'substr', 'replace', 'match', 'test', 'exec',
+            'setTimeout', 'setInterval', 'Promise', 'then', 'catch',
+            'finally', 'resolve', 'reject', 'all', 'race', 'any',
+            'get', 'set', 'has', 'delete', 'clear', 'keys',
+            'values', 'entries', 'for...of', 'for...in', 'while',
+            'do...while', 'try', 'catch', 'finally', 'throw',
+            'new', 'typeof', 'instanceof', 'in', 'of', 'delete',
+            'void', 'undefined', 'null', 'NaN', 'Infinity',
+            'super', 'this', 'self', 'fn', 'callback'
+        }
+        
         for callee_name in method.calls:
             # Skip known library functions
-            if callee_name in (
-                'console', 'Text', 'Button', 'Column', 'Row', 'List', 
-                'ListItem', 'ForEach', 'if', 'else', 'switch', 'case',
-                'return', 'break', 'continue'
-            ):
+            if callee_name in SKIP_FUNCTIONS:
                 continue
-                
+            
+            # Try to resolve the callee method ID
+            callee_method_id = self._resolve_callee_method_id(callee_name)
+            
             self.db.insert_call(
                 project_id=self.project_id,
                 caller_method_id=method_id,
                 callee_method_name=callee_name,
                 callee_signature=None,
-                callee_method_id=None,
+                callee_method_id=callee_method_id,
                 call_type='call'
             )
+
+    def _resolve_callee_method_id(self, method_name: str) -> Optional[int]:
+        """Try to resolve a method name to its database ID."""
+        try:
+            cursor = self.db.conn.execute(
+                "SELECT id FROM methods WHERE name = ? AND project_id = ? LIMIT 1",
+                (method_name, self.project_id)
+            )
+            result = cursor.fetchone()
+            return result[0] if result else None
+        except:
+            return None
 
     def _store_standalone_function(self, func: ParsedMethod, file_id: int, file_path: str):
         """Store a standalone function in the database."""
