@@ -16,6 +16,8 @@ complex_project/src/main/ets/LargeScaleTest.ets
 deep_stress_test.py
 inspect_analysis.py
 verify_system.py
+million_line_test.py
+test_incremental_detailed.py
 
 # Python
 __pycache__/

@@ -91,11 +91,9 @@ class ArkAnalyzerRunner:
             print(f"Warning: Could not read {file_path}: {e}")
             return
         
-        # Calculate file hash
         file_hash = hashlib.md5(content.encode()).hexdigest()
         line_count = content.count('\n') + 1
         
-        # Insert file record
         file_id = self.db.insert_file(
             project_id=self.project_id,
             path=file_path,
@@ -104,17 +102,28 @@ class ArkAnalyzerRunner:
             analyzed_at=int(time.time())
         )
         
-        # Parse the file content
+        if file_id is None:
+            return
+        
         entities = self.parser.parse_file(content, file_path)
         standalone_funcs = self.parser.extract_standalone_functions(content)
         
-        # Process classes/structs
         for entity in entities:
             self._store_class(entity, file_id, file_path)
             
-        # Process standalone functions
         for func in standalone_funcs:
             self._store_standalone_function(func, file_id, file_path)
+    
+    def _should_process_file(self, file_path: str, file_hash: str) -> bool:
+        """Check if a file should be processed based on its hash."""
+        cursor = self.db.conn.execute(
+            "SELECT hash FROM files WHERE project_id = ? AND path = ?",
+            (self.project_id, file_path)
+        )
+        result = cursor.fetchone()
+        if result and result[0] == file_hash:
+            return False
+        return True
 
     def _store_class(self, entity: ParsedClass, file_id: int, file_path: str):
         """Store a parsed class/struct in the database."""

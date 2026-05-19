@@ -195,8 +195,17 @@ class ArkAnalyzerDB:
         return cursor.lastrowid
 
     def insert_file(self, project_id: int, path: str, hash_val: str,
-                   line_count: int, analyzed_at: int) -> int:
-        """Insert a file and return its ID."""
+                   line_count: int, analyzed_at: int) -> Optional[int]:
+        """Insert a file and return its ID. Returns None if file hasn't changed."""
+        cursor = self.conn.execute(
+            """SELECT id, hash FROM files WHERE project_id = ? AND path = ?""",
+            (project_id, path)
+        )
+        existing = cursor.fetchone()
+        
+        if existing and existing[1] == hash_val:
+            return existing[0]
+        
         cursor = self.conn.execute(
             """INSERT OR REPLACE INTO files (project_id, path, hash, line_count, analyzed_at)
                VALUES (?, ?, ?, ?, ?)""",
