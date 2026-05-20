@@ -6,6 +6,10 @@
 # Embedded repositories
 arkanalyzer_repo/
 
+# Test projects
+ultra_complex_test_project/
+ultra_messy_test_project/
+
 # Test data
 complex_project/src/main/ets/real_*/
 complex_project/src/main/ets/UltraComplexTest.ets
@@ -18,6 +22,10 @@ inspect_analysis.py
 verify_system.py
 million_line_test.py
 test_incremental_detailed.py
+create_ultra_complex_test.py
+create_ultra_messy_test.py
+ultra_complex_stress_test.py
+ultimate_messy_stress_test.py
 
 # Python
 __pycache__/
