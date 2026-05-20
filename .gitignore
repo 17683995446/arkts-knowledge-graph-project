@@ -9,6 +9,22 @@ arkanalyzer_repo/
 # Test projects
 ultra_complex_test_project/
 ultra_messy_test_project/
+ultimate_chaos_project/
+massive_test_project/
+
+# Test scripts
+boundary_test.py
+concurrency_test.py
+incremental_optimization_test.py
+massive_scale_stress_test.py
+ultimate_chaos_test.py
+ultimate_stress_test.py
+run_ultimate_chaos_test.py
+create_million_line_test.py
+create_ultimate_chaos_test.py
+
+# Test reports
+FINAL_TEST_REPORT.md
 
 # Test data
 complex_project/src/main/ets/real_*/

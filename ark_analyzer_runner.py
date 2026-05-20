@@ -18,43 +18,67 @@ class ArkAnalyzerRunner:
         self.parser = ArkTSParser()
         self.project_id: Optional[int] = None
 
-    def analyze_project(self, project_path: str, project_name: Optional[str] = None) -> bool:
+    def analyze_project(self, project_path: str, project_name: Optional[str] = None, incremental: bool = True) -> bool:
         """Analyze an ArkTS project and store results in SQLite."""
         if not project_name:
             project_name = Path(project_path).name
             
         print(f"Analyzing project: {project_name}")
         print(f"Path: {project_path}")
+        print(f"Incremental mode: {'enabled' if incremental else 'disabled'}")
         
         try:
             self.db.begin_transaction()
             
-            # Create project entry
-            self.project_id = self.db.insert_project(
-                name=project_name,
-                path=project_path,
-                analyzed_at=int(time.time())
-            )
+            # 获取或创建项目
+            existing_project = self._get_existing_project(project_name)
+            if existing_project:
+                self.project_id = existing_project
+                print(f"Using existing project ID: {self.project_id}")
+            else:
+                self.project_id = self.db.insert_project(
+                    name=project_name,
+                    path=project_path,
+                    analyzed_at=int(time.time())
+                )
+                print(f"Created new project ID: {self.project_id}")
             
-            # Collect files
+            # 收集文件
             files_to_process = self._collect_files(project_path)
             print(f"Found {len(files_to_process)} files to analyze")
             
-            # Process each file
+            # 处理文件
+            processed = 0
+            skipped = 0
             for i, file_path in enumerate(files_to_process):
-                self._process_file(file_path)
+                if incremental and self._should_skip_file(file_path):
+                    skipped += 1
+                else:
+                    self._process_file(file_path)
+                    processed += 1
+                
                 if (i + 1) % 10 == 0:
-                    print(f"  Processed {i + 1}/{len(files_to_process)} files")
+                    print(f"  Processed {i + 1}/{len(files_to_process)} files (skipped: {skipped})")
+            
+            print(f"  Processed {len(files_to_process)}/{len(files_to_process)} files (skipped: {skipped})")
             
             self.db.commit()
             
-            # Show final stats
+            # 更新项目分析时间
+            self.db.conn.execute(
+                "UPDATE projects SET analyzed_at = ? WHERE id = ?",
+                (int(time.time()), self.project_id)
+            )
+            self.db.commit()
+            
+            # 显示最终统计
             stats = self.db.get_project_stats(self.project_id)
             print(f"\nAnalysis complete!")
             print(f"  Files: {stats['files']}")
             print(f"  Classes: {stats['classes']}")
             print(f"  Methods: {stats['methods']}")
             print(f"  Calls: {stats['calls']}")
+            print(f"  Incremental: skipped {skipped} unchanged files")
             
             return True
             
@@ -64,6 +88,106 @@ class ArkAnalyzerRunner:
             import traceback
             traceback.print_exc()
             return False
+
+    def _get_existing_project(self, project_name: str) -> Optional[int]:
+        """获取已存在的项目ID"""
+        try:
+            cursor = self.db.conn.execute(
+                "SELECT id FROM projects WHERE name = ? ORDER BY analyzed_at DESC LIMIT 1",
+                (project_name,)
+            )
+            result = cursor.fetchone()
+            return result[0] if result else None
+        except:
+            return None
+
+    def _should_skip_file(self, file_path: str) -> bool:
+        """检查文件是否有变化"""
+        try:
+            # 读取文件
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+            
+            # 计算哈希
+            file_hash = hashlib.md5(content.encode()).hexdigest()
+            
+            # 查询数据库中的哈希
+            cursor = self.db.conn.execute(
+                "SELECT hash FROM files WHERE project_id = ? AND path = ?",
+                (self.project_id, file_path)
+            )
+            result = cursor.fetchone()
+            
+            # 如果哈希相同，跳过
+            if result and result[0] == file_hash:
+                return True
+            
+            # 如果文件不存在或有变化，需要处理
+            # 先删除旧记录
+            if result:
+                self._delete_file_records(file_path)
+            
+            return False
+            
+        except Exception as e:
+            return False
+
+    def _delete_file_records(self, file_path: str):
+        """删除文件相关的所有记录"""
+        try:
+            # 获取文件ID
+            cursor = self.db.conn.execute(
+                "SELECT id FROM files WHERE project_id = ? AND path = ?",
+                (self.project_id, file_path)
+            )
+            result = cursor.fetchone()
+            if not result:
+                return
+            
+            file_id = result[0]
+            
+            # 删除调用关系
+            self.db.conn.execute(
+                "DELETE FROM calls WHERE caller_method_id IN (SELECT id FROM methods WHERE file_id = ?)",
+                (file_id,)
+            )
+            self.db.conn.execute(
+                "DELETE FROM calls WHERE callee_method_id IN (SELECT id FROM methods WHERE file_id = ?)",
+                (file_id,)
+            )
+            
+            # 删除方法
+            self.db.conn.execute(
+                "DELETE FROM methods WHERE file_id = ?",
+                (file_id,)
+            )
+            
+            # 删除装饰器
+            self.db.conn.execute(
+                "DELETE FROM decorators WHERE file_id = ?",
+                (file_id,)
+            )
+            
+            # 删除类
+            self.db.conn.execute(
+                "DELETE FROM classes WHERE file_id = ?",
+                (file_id,)
+            )
+            
+            # 删除命名空间
+            self.db.conn.execute(
+                "DELETE FROM namespaces WHERE file_id = ?",
+                (file_id,)
+            )
+            
+            # 删除文件记录
+            self.db.conn.execute(
+                "DELETE FROM files WHERE id = ?",
+                (file_id,)
+            )
+            
+        except Exception as e:
+            pass
 
     def _collect_files(self, project_path: str) -> List[str]:
         """Collect all ArkTS/TypeScript files from the project."""
@@ -114,17 +238,6 @@ class ArkAnalyzerRunner:
         for func in standalone_funcs:
             self._store_standalone_function(func, file_id, file_path)
     
-    def _should_process_file(self, file_path: str, file_hash: str) -> bool:
-        """Check if a file should be processed based on its hash."""
-        cursor = self.db.conn.execute(
-            "SELECT hash FROM files WHERE project_id = ? AND path = ?",
-            (self.project_id, file_path)
-        )
-        result = cursor.fetchone()
-        if result and result[0] == file_hash:
-            return False
-        return True
-
     def _store_class(self, entity: ParsedClass, file_id: int, file_path: str):
         """Store a parsed class/struct in the database."""
         # Insert class
@@ -251,10 +364,7 @@ class ArkAnalyzerRunner:
 
 def run_ark_analyzer(ark_analyzer_path: str, project_path: str, db_path: str = "ark_graph.db") -> bool:
     """Main function to run analysis and populate database."""
-    # Clean up existing database
-    if os.path.exists(db_path):
-        os.remove(db_path)
-    
+    # 不再删除数据库，支持增量更新
     db = ArkAnalyzerDB(db_path)
     db.initialize()
     
