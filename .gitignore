@@ -1,48 +1,3 @@
-# Database files
-*.db
-*.sqlite
-*.sqlite3
-
-# Embedded repositories
-arkanalyzer_repo/
-
-# Test projects
-ultra_complex_test_project/
-ultra_messy_test_project/
-ultimate_chaos_project/
-massive_test_project/
-
-# Test scripts
-boundary_test.py
-concurrency_test.py
-incremental_optimization_test.py
-massive_scale_stress_test.py
-ultimate_chaos_test.py
-ultimate_stress_test.py
-run_ultimate_chaos_test.py
-create_million_line_test.py
-create_ultimate_chaos_test.py
-
-# Test reports
-FINAL_TEST_REPORT.md
-
-# Test data
-complex_project/src/main/ets/real_*/
-complex_project/src/main/ets/UltraComplexTest.ets
-complex_project/src/main/ets/EdgeCaseTest.ets
-complex_project/src/main/ets/LargeScaleTest.ets
-
-# Test scripts
-deep_stress_test.py
-inspect_analysis.py
-verify_system.py
-million_line_test.py
-test_incremental_detailed.py
-create_ultra_complex_test.py
-create_ultra_messy_test.py
-ultra_complex_stress_test.py
-ultimate_messy_stress_test.py
-
 # Python
 __pycache__/
 *.py[cod]
@@ -65,6 +20,16 @@ wheels/
 .installed.cfg
 *.egg
 
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
 # IDE
 .vscode/
 .idea/
@@ -72,12 +37,18 @@ wheels/
 *.swo
 *~
 
+# Test Projects
+ultimate_chaos_project/
+massive_chaos_project/
+extreme_chaos_project/
+
+# Logs
+*.log
+
 # OS
 .DS_Store
 Thumbs.db
 
-# Build files
-node_modules/
-build/
-dist/
-*.log
+# Temporary Files
+*.tmp
+*.temp

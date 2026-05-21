@@ -214,8 +214,8 @@ class ArkAnalyzerDB:
         return cursor.lastrowid
 
     def insert_class(self, project_id: int, name: str, signature: str,
-                   file_id: int, namespace_id: int, flags: int,
-                   start_line: int, end_line: int, source_code: str) -> int:
+                   file_id: int, namespace_id: Optional[int], flags: int,
+                   start_line: int, end_line: int, source_code: Optional[str]) -> int:
         """Insert a class and return its ID."""
         cursor = self.conn.execute(
             """INSERT INTO classes (project_id, name, signature, file_id, namespace_id,
@@ -227,9 +227,9 @@ class ArkAnalyzerDB:
         return cursor.lastrowid
 
     def insert_method(self, project_id: int, name: str, signature: str,
-                    class_id: int, namespace_id: int, file_id: int,
+                    class_id: Optional[int], namespace_id: Optional[int], file_id: Optional[int],
                     params: str, return_type: str, flags: int, start_line: int,
-                    end_line: int, source_code: str, is_constructor: int,
+                    end_line: int, source_code: Optional[str], is_constructor: int,
                     is_static: int) -> int:
         """Insert a method and return its ID."""
         cursor = self.conn.execute(
@@ -244,8 +244,8 @@ class ArkAnalyzerDB:
         return cursor.lastrowid
 
     def insert_call(self, project_id: int, caller_method_id: int,
-                   callee_method_name: str, callee_signature: str,
-                   callee_method_id: int, call_type: str) -> int:
+                   callee_method_name: str, callee_signature: Optional[str],
+                   callee_method_id: Optional[int], call_type: str) -> int:
         """Insert a call relationship and return its ID."""
         cursor = self.conn.execute(
             """INSERT INTO calls (project_id, caller_method_id, callee_method_name,
@@ -306,7 +306,7 @@ class ArkAnalyzerDB:
         row = cursor.fetchone()
         if not row:
             return None
-        return self._row_to_dict(cursor, [
+        return self._row_to_dict(row, [
             'id', 'project_id', 'name', 'signature', 'file_id', 'namespace_id',
             'flags', 'start_line', 'end_line', 'source_code', 'file_path'
         ])
@@ -318,8 +318,8 @@ class ArkAnalyzerDB:
         """, (class_id,))
         columns = ['id', 'project_id', 'name', 'signature', 'class_id', 'namespace_id',
                   'params', 'return_type', 'flags', 'start_line', 'end_line',
-                  'source_code', 'is_constructor', 'is_static']
-        return [self._row_to_dict(cursor, columns) for row in cursor.fetchall()]
+                  'source_code', 'file_id', 'is_constructor', 'is_static']
+        return [self._row_to_dict(row, columns) for row in cursor.fetchall()]
 
     def query_callers(self, method_id: int) -> List[Dict]:
         """Query all callers of a method."""
@@ -392,8 +392,94 @@ class ArkAnalyzerDB:
             "SELECT caller_method_id, callee_method_name, callee_method_id FROM calls WHERE project_id = ?",
             (project_id,)
         ).fetchall()
+        
+        # 构建 nodes 数组
+        nodes = []
+        node_map = {}  # maps (type, id) -> node_index
+        
+        # 添加文件节点
+        for i, row in enumerate(files):
+            file_node = {
+                'id': f"file_{row[0]}",
+                'name': os.path.basename(row[1]),
+                'type': 'file',
+                'file': row[1],
+                'lines': row[2]
+            }
+            nodes.append(file_node)
+            node_map[('file', row[0])] = i
+        
+        # 添加类节点
+        for row in classes:
+            class_node = {
+                'id': f"class_{row[0]}",
+                'name': row[1],
+                'type': 'class',
+                'file': row[3],
+                'flags': row[4],
+                'start': row[5],
+                'end': row[6]
+            }
+            nodes.append(class_node)
+            node_map[('class', row[0])] = len(nodes) - 1
+        
+        # 添加方法节点
+        for row in methods:
+            method_node = {
+                'id': f"method_{row[0]}",
+                'name': row[1],
+                'type': 'method',
+                'class_id': row[3],
+                'params': row[4],
+                'return': row[5],
+                'flags': row[6],
+                'start': row[7],
+                'end': row[8]
+            }
+            nodes.append(method_node)
+            node_map[('method', row[0])] = len(nodes) - 1
+        
+        # 构建 links 数组
+        links = []
+        
+        # 方法 -> 文件链接
+        for row in methods:
+            if row[3] is None:  # class_id
+                method_id = row[0]
+                links.append({
+                    'source': f"method_{method_id}",
+                    'target': None,  # 独立函数没有文件链接
+                    'type': 'standalone'
+                })
+        
+        # 方法 -> 类链接
+        for row in methods:
+            if row[3] is not None:
+                method_id = row[0]
+                class_id = row[3]
+                links.append({
+                    'source': f"method_{method_id}",
+                    'target': f"class_{class_id}",
+                    'type': 'member'
+                })
+        
+        # 调用链接
+        for row in calls:
+            caller_id = row[0]
+            callee_id = row[2]
+            callee_name = row[1]
+            
+            if callee_id is not None:
+                links.append({
+                    'source': f"method_{caller_id}",
+                    'target': f"method_{callee_id}",
+                    'type': 'call',
+                    'callee_name': callee_name
+                })
 
         return {
+            'nodes': nodes,
+            'links': links,
             'files': [{'id': r[0], 'path': r[1], 'lines': r[2]} for r in files],
             'classes': [{'id': r[0], 'name': r[1], 'sig': r[2], 'file': r[3],
                         'flags': r[4], 'start': r[5], 'end': r[6]} for r in classes],
@@ -404,6 +490,28 @@ class ArkAnalyzerDB:
             'stats': self.get_project_stats(project_id)
         }
 
-    def _row_to_dict(self, cursor: sqlite3.Cursor, columns: List[str]) -> Dict:
+    def _row_to_dict(self, row: Optional[tuple], columns: List[str]) -> Dict:
         """Convert a row to a dictionary."""
-        return dict(zip(columns, cursor.fetchone() if cursor.description else []))
+        if not row:
+            return {}
+        return dict(zip(columns, row))
+    
+    def get_all_projects(self) -> List[Dict]:
+        """Get list of all projects."""
+        cursor = self.conn.execute("""
+            SELECT id, name, path, analyzed_at FROM projects ORDER BY analyzed_at DESC
+        """)
+        return [
+            {
+                'id': row[0],
+                'name': row[1],
+                'path': row[2],
+                'analyzed_at': row[3]
+            }
+            for row in cursor.fetchall()
+        ]
+    
+    def delete_project(self, project_id: int):
+        """Delete a project and all associated data."""
+        self.conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        self.conn.commit()
