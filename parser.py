@@ -51,38 +51,46 @@ class ArkTSParser:
     def __init__(self):
         logger.debug("初始化 ArkTSParser")
         # Unicode 字符支持
-        # 包含：中文、日文、韩文、以及其他Unicode字母
-        unicode_letter = (
-            r'a-zA-Z_\u4e00-\u9fff'  # 中文
-            r'\u3040-\u309f'  # 日文平假名
-            r'\u30a0-\u30ff'  # 日文片假名
-            r'\uac00-\ud7af'  # 韩文
-            r'\u0400-\u04ff'  # 西里尔字母
-            r'\u0370-\u03ff'  # 希腊字母
-            r'\u0600-\u06ff'  # 阿拉伯字母
-            r'\u0590-\u05ff'  # 希伯来字母
-        )
-        logger.debug(f"Unicode 字符范围: {unicode_letter}")
+        # 使用真实的 Unicode 字符来构建字符类
+        # 将转义序列转换为真实字符
+        unicode_ranges = [
+            'a-zA-Z_',
+            chr(0x4e00) + '-' + chr(0x9fff),    # CJK 统一表意文字
+            chr(0x3040) + '-' + chr(0x309f),    # 日文平假名
+            chr(0x30a0) + '-' + chr(0x30ff),    # 日文片假名
+            chr(0xac00) + '-' + chr(0xd7af),    # 韩文音节
+            chr(0x0400) + '-' + chr(0x04ff),    # 西里尔字母
+            chr(0x0370) + '-' + chr(0x03ff),    # 希腊字母
+            chr(0x0600) + '-' + chr(0x06ff),    # 阿拉伯字母
+            chr(0x0590) + '-' + chr(0x05ff),    # 希伯来字母
+            chr(0x0e00) + '-' + chr(0x0e7f),    # 泰语
+        ]
+        unicode_letter = '[' + ''.join(unicode_ranges) + ']'
+        logger.debug(f"Unicode 字符范围已构建")
         
-        # 更严格的方法正则表达式（支持Unicode）
+        # 标识符模式（支持Unicode）
+        # 使用字符类来匹配所有合法的标识符字符
+        # 注意：使用 + 而不是 *，确保至少匹配一个字符
+        identifier = unicode_letter + r'+'
         self.method_pattern = re.compile(
-            r'^\s*(?:(?:@[' + unicode_letter + r']\w*\s*(?:\([^)]*\))?\s*)*)\s*'
+            r'^\s*(?:(?:@' + identifier + r'\s*(?:\([^)]*\))?\s*)*)\s*'
             r'(?:(async)\s+)?'
             r'(?:(public|private|protected)\s+)?'
             r'(?:(static)\s+)?'
-            r'([' + unicode_letter + r']\w*)\s*'
+            r'(' + identifier + r')\s*'
             r'\(([^)]*)\)',
             re.MULTILINE
         )
         logger.debug("方法正则表达式已编译")
         
         # 类/结构模式（支持Unicode）
+        # 使用更简单的模式，装饰器为可选项
         self.struct_pattern = re.compile(
-            r'(?:@([' + unicode_letter + r']\w*)\s*(?:\([^)]*\))?\s*(?:\n\s*@)?)*'
+            r'(?:@' + identifier + r'\s*(?:\([^)]*\))?\s*)?'
             r'(?:export\s+)?'
             r'(?:(abstract)\s+)?'
             r'(class|struct)\s+'
-            r'([' + unicode_letter + r']\w*)',
+            r'(' + identifier + r')',
             re.MULTILINE
         )
         logger.debug("类/结构正则表达式已编译")
@@ -91,13 +99,13 @@ class ArkTSParser:
         self.function_pattern = re.compile(
             r'(?:export\s+)?'
             r'function\s+'
-            r'([' + unicode_letter + r']\w*)'
+            r'(' + identifier + r')'
             r'\s*\(([^)]*)\)',
             re.MULTILINE
         )
         logger.debug("函数正则表达式已编译")
         
-        self.call_pattern = re.compile(r'\b([' + unicode_letter + r']\w*)\s*\(', re.MULTILINE)
+        self.call_pattern = re.compile(r'\b(' + identifier + r')\s*\(', re.MULTILINE)
         logger.debug("调用关系正则表达式已编译")
         
         # 跳过的关键字和通用方法/组件
@@ -343,8 +351,9 @@ class ArkTSParser:
             
             # 正则表达式匹配了从装饰器到 class/struct 的完整范围
             # 我们需要找到 class/struct 关键字的位置
-            struct_type = match.group(3)
-            name = match.group(4)
+            # Group(1) = abstract, Group(2) = class/struct, Group(3) = name
+            struct_type = match.group(2)
+            name = match.group(3)
             logger.debug(f"匹配到 {struct_type}: {name}")
             
             # 找到 class/struct 关键字在清理后内容中的位置
