@@ -4,24 +4,36 @@ Designed for storing code knowledge graph from ark_analyzer
 """
 
 import sqlite3
+import logging
 from typing import Optional, List, Dict, Any
 import json
 import os
+
+# 配置日志
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger('ArkAnalyzerDB')
 
 
 class ArkAnalyzerDB:
     """SQLite database for ArkAnalyzer code knowledge graph."""
 
     def __init__(self, db_path: str = "ark_graph.db"):
+        logger.debug(f"初始化 ArkAnalyzerDB，数据库路径: {db_path}")
         self.db_path = db_path
         self.conn: Optional[sqlite3.Connection] = None
 
     def initialize(self):
         """Initialize database connection and create tables."""
+        logger.debug("初始化数据库连接")
         self.conn = sqlite3.connect(self.db_path)
         self.conn.execute("PRAGMA journal_mode=DELETE")
         self.conn.execute("PRAGMA foreign_keys=ON")
+        logger.debug("开始创建数据库表")
         self._create_tables()
+        logger.info("数据库初始化完成")
 
     def _create_tables(self):
         """Create all necessary tables for ArkAnalyzer output."""
@@ -170,33 +182,43 @@ class ArkAnalyzerDB:
 
     def close(self):
         """Close database connection."""
+        logger.debug("关闭数据库连接")
         if self.conn:
             self.conn.close()
             self.conn = None
+            logger.debug("数据库连接已关闭")
 
     def begin_transaction(self):
         """Begin a database transaction."""
+        logger.debug("开始数据库事务")
         self.conn.execute("BEGIN TRANSACTION")
 
     def commit(self):
         """Commit the current transaction."""
+        logger.debug("提交数据库事务")
         self.conn.commit()
+        logger.debug("事务已提交")
 
     def rollback(self):
         """Rollback the current transaction."""
+        logger.warning("回滚数据库事务")
         self.conn.rollback()
 
     def insert_project(self, name: str, path: str, analyzed_at: int) -> int:
         """Insert a new project and return its ID."""
+        logger.debug(f"插入项目: name={name}, path={path}")
         cursor = self.conn.execute(
             "INSERT OR REPLACE INTO projects (name, path, analyzed_at) VALUES (?, ?, ?)",
             (name, path, analyzed_at)
         )
-        return cursor.lastrowid
+        project_id = cursor.lastrowid
+        logger.debug(f"项目插入完成，ID: {project_id}")
+        return project_id
 
     def insert_file(self, project_id: int, path: str, hash_val: str,
                    line_count: int, analyzed_at: int) -> Optional[int]:
         """Insert a file and return its ID. Returns None if file hasn't changed."""
+        logger.debug(f"检查文件是否已存在: project_id={project_id}, path={path}")
         cursor = self.conn.execute(
             """SELECT id, hash FROM files WHERE project_id = ? AND path = ?""",
             (project_id, path)
@@ -204,19 +226,24 @@ class ArkAnalyzerDB:
         existing = cursor.fetchone()
         
         if existing and existing[1] == hash_val:
+            logger.debug(f"文件未变更，返回现有 ID: {existing[0]}")
             return existing[0]
         
+        logger.debug(f"插入文件: project_id={project_id}, path={path}, lines={line_count}")
         cursor = self.conn.execute(
             """INSERT OR REPLACE INTO files (project_id, path, hash, line_count, analyzed_at)
                VALUES (?, ?, ?, ?, ?)""",
             (project_id, path, hash_val, line_count, analyzed_at)
         )
-        return cursor.lastrowid
+        file_id = cursor.lastrowid
+        logger.debug(f"文件插入完成，ID: {file_id}")
+        return file_id
 
     def insert_class(self, project_id: int, name: str, signature: str,
                    file_id: int, namespace_id: Optional[int], flags: int,
                    start_line: int, end_line: int, source_code: Optional[str]) -> int:
         """Insert a class and return its ID."""
+        logger.debug(f"插入类: project_id={project_id}, name={name}, lines={start_line}-{end_line}")
         cursor = self.conn.execute(
             """INSERT INTO classes (project_id, name, signature, file_id, namespace_id,
                flags, start_line, end_line, source_code)
@@ -224,7 +251,9 @@ class ArkAnalyzerDB:
             (project_id, name, signature, file_id, namespace_id, flags,
              start_line, end_line, source_code)
         )
-        return cursor.lastrowid
+        class_id = cursor.lastrowid
+        logger.debug(f"类插入完成，ID: {class_id}")
+        return class_id
 
     def insert_method(self, project_id: int, name: str, signature: str,
                     class_id: Optional[int], namespace_id: Optional[int], file_id: Optional[int],
@@ -232,6 +261,7 @@ class ArkAnalyzerDB:
                     end_line: int, source_code: Optional[str], is_constructor: int,
                     is_static: int) -> int:
         """Insert a method and return its ID."""
+        logger.debug(f"插入方法: project_id={project_id}, name={name}, class_id={class_id}, lines={start_line}-{end_line}")
         cursor = self.conn.execute(
             """INSERT INTO methods (project_id, name, signature, class_id, namespace_id,
                file_id, params, return_type, flags, start_line, end_line, source_code,
@@ -241,12 +271,15 @@ class ArkAnalyzerDB:
              params, return_type, flags, start_line, end_line, source_code,
              is_constructor, is_static)
         )
-        return cursor.lastrowid
+        method_id = cursor.lastrowid
+        logger.debug(f"方法插入完成，ID: {method_id}")
+        return method_id
 
     def insert_call(self, project_id: int, caller_method_id: int,
                    callee_method_name: str, callee_signature: Optional[str],
                    callee_method_id: Optional[int], call_type: str) -> int:
         """Insert a call relationship and return its ID."""
+        logger.debug(f"插入调用关系: project_id={project_id}, caller={caller_method_id} -> callee={callee_method_name} (ID: {callee_method_id})")
         cursor = self.conn.execute(
             """INSERT INTO calls (project_id, caller_method_id, callee_method_name,
                callee_signature, callee_method_id, call_type)
@@ -254,45 +287,59 @@ class ArkAnalyzerDB:
             (project_id, caller_method_id, callee_method_name, callee_signature,
              callee_method_id, call_type)
         )
-        return cursor.lastrowid
+        call_id = cursor.lastrowid
+        logger.debug(f"调用关系插入完成，ID: {call_id}")
+        return call_id
 
     def insert_namespace(self, project_id: int, name: str, file_id: int) -> int:
         """Insert a namespace and return its ID."""
+        logger.debug(f"插入命名空间: project_id={project_id}, name={name}, file_id={file_id}")
         cursor = self.conn.execute(
             "INSERT INTO namespaces (project_id, name, file_id) VALUES (?, ?, ?)",
             (project_id, name, file_id)
         )
-        return cursor.lastrowid
+        ns_id = cursor.lastrowid
+        logger.debug(f"命名空间插入完成，ID: {ns_id}")
+        return ns_id
 
     def insert_field(self, project_id: int, name: str, type_val: str,
                     class_id: int, flags: int) -> int:
         """Insert a field and return its ID."""
+        logger.debug(f"插入字段: project_id={project_id}, name={name}, class_id={class_id}, type={type_val}")
         cursor = self.conn.execute(
             "INSERT INTO fields (project_id, name, type, class_id, flags) VALUES (?, ?, ?, ?, ?)",
             (project_id, name, type_val, class_id, flags)
         )
-        return cursor.lastrowid
+        field_id = cursor.lastrowid
+        logger.debug(f"字段插入完成，ID: {field_id}")
+        return field_id
 
     def insert_decorator(self, project_id: int, class_id: int,
                         method_id: int, name: str, args: str) -> int:
         """Insert a decorator and return its ID."""
+        logger.debug(f"插入装饰器: project_id={project_id}, name={name}, class_id={class_id}, method_id={method_id}")
         cursor = self.conn.execute(
             """INSERT INTO decorators (project_id, class_id, method_id, name, args)
                VALUES (?, ?, ?, ?, ?)""",
             (project_id, class_id, method_id, name, args)
         )
-        return cursor.lastrowid
+        dec_id = cursor.lastrowid
+        logger.debug(f"装饰器插入完成，ID: {dec_id}")
+        return dec_id
 
     def insert_import(self, project_id: int, file_id: int,
                      import_path: str, import_type: str,
                      is_default: int) -> int:
         """Insert an import and return its ID."""
+        logger.debug(f"插入导入: project_id={project_id}, file_id={file_id}, path={import_path}, is_default={is_default}")
         cursor = self.conn.execute(
             """INSERT INTO imports (project_id, file_id, import_path, import_type, is_default)
                VALUES (?, ?, ?, ?, ?)""",
             (project_id, file_id, import_path, import_type, is_default)
         )
-        return cursor.lastrowid
+        import_id = cursor.lastrowid
+        logger.debug(f"导入插入完成，ID: {import_id}")
+        return import_id
 
     def query_class(self, project_id: int, class_name: str) -> Optional[Dict]:
         """Query a class by name."""
@@ -354,6 +401,7 @@ class ArkAnalyzerDB:
 
     def get_project_stats(self, project_id: int) -> Dict:
         """Get project statistics."""
+        logger.debug(f"获取项目统计: project_id={project_id}")
         cursor = self.conn.execute("""
             SELECT
                 (SELECT COUNT(*) FROM files WHERE project_id = ?) as files,
@@ -363,16 +411,19 @@ class ArkAnalyzerDB:
                 (SELECT COUNT(*) FROM namespaces WHERE project_id = ?) as namespaces
         """, (project_id, project_id, project_id, project_id, project_id))
         row = cursor.fetchone()
-        return {
+        stats = {
             'files': row[0],
             'classes': row[1],
             'methods': row[2],
             'calls': row[3],
             'namespaces': row[4]
         }
+        logger.debug(f"项目统计: {stats}")
+        return stats
 
     def export_graph(self, project_id: int) -> Dict:
         """Export the entire knowledge graph as JSON."""
+        logger.info(f"导出知识图谱: project_id={project_id}")
         files = self.conn.execute(
             "SELECT id, path, line_count FROM files WHERE project_id = ?",
             (project_id,)
