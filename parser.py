@@ -52,7 +52,7 @@ class ArkTSParser:
         logger.debug("初始化 ArkTSParser")
         # Unicode 字符支持
         # 包含：中文、日文、韩文、泰语、以及其他Unicode字母
-        unicode_letter = (
+        self.unicode_letter = (
             r'a-zA-Z_\u4e00-\u9fff'  # 中文
             r'\u3040-\u309f'  # 日文平假名
             r'\u30a0-\u30ff'  # 日文片假名
@@ -63,9 +63,9 @@ class ArkTSParser:
             r'\u0590-\u05ff'  # 希伯来字母
             r'\u0e00-\u0e7f'  # 泰语
         )
-        # 完整标识符模式（支持 Unicode）
-        identifier = '[' + unicode_letter + r'][' + unicode_letter + r'\d]*'
-        logger.debug(f"Unicode 字符范围: {unicode_letter}")
+        # 完整标识符模式（支持Unicode）
+        identifier = '[' + self.unicode_letter + r'][' + self.unicode_letter + r'\d]*'
+        logger.debug(f"Unicode 字符范围: {self.unicode_letter}")
         
         # 更严格的方法正则表达式（支持Unicode）
         self.method_pattern = re.compile(
@@ -380,7 +380,7 @@ class ArkTSParser:
             for line in lines:
                 stripped = line.lstrip()
                 if stripped.startswith('@'):
-                    match_dec = re.match(r'@([a-zA-Z_]\w*)', stripped)
+                    match_dec = re.match(r'@(' + self.unicode_letter + r'\w*)', stripped)
                     if match_dec:
                         decorator_name = match_dec.group(1)
                         decorators.append(decorator_name)
